@@ -61,3 +61,7 @@ class Table:
 
         for line in self.results:
             self.filter.eval(line)
+
+        final_sink.sync()
+
+        return self.results

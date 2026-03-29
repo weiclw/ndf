@@ -59,15 +59,17 @@ class Sink:
             self._order_reduce(asc_or_desc, order_list)
 
         if len(self.group_list) > 0:
-            self._group_reduce()
+            self._group_reduce(self.group_list)
+
+        return self.results
     
     def _order_reduce(self, asc_or_desc, order_list):
         desc_or_asc = not asc_or_desc
         order_idx_list = [c.get_index() for c in order_list]
         self.results.sort(reverse=desc_or_asc, key=lambda x: [x[i] for i in order_idx_list])
     
-    def _group_reduce(self):
-        group_idx_list = [c.get_index() for c in self.group_list]
+    def _group_reduce(self, group_list):
+        group_idx_list = [c.get_index() for c in group_list]
         # {"func": [idx1, idx2, ...]}
         output_col_idx_dict = self._get_output_col_index_dict()
         # {[col1, col2, ...] : {[col, "func"] : val}}
@@ -75,6 +77,28 @@ class Sink:
 
         for line in self.results:
             self._group_output_accumulate(line, group_idx_list, output_col_idx_dict, group_dict)
+
+        # Update and consolidate the results, according to previous orders.
+        for line in self.results:
+            key = [line[i] for i in group_idx_list]
+            outputs = []
+            if key in group_dict:
+                # {[col, "func"] : val}
+                func_dict = group_dict[key]
+                # [[col, "func", val], ...]
+                func_pair_list = [[k[0], k[1], v] for k,v in func_dict.items()]
+                func_pair_list.sort()
+                # Construct new output: [aggregated cols,..., group_cols,...,]
+                new_line = [v[2] for v in func_pair_list]
+                for k in key:
+                    new_line.append(k)
+                outputs.append(new_line)
+                # Remove the key entry from group_dict
+                group_dict.pop(key)
+                if len(group_dict) == 0:
+                    break
+
+        self.results = outputs
 
     def _group_output_accumulate(self, line, group_idx_list, output_col_idx_dict, group_dict):
         group_key = [line[i] for i in group_idx_list]
